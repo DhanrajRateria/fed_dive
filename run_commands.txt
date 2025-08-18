@@ -1,0 +1,16 @@
+# Baseline IID experiment
+python main.py --experiment baseline_iid
+
+# Non-IID Performance experiment
+python main.py --experiment non_iid_performance
+
+# Temperature Study
+python main.py --experiment temperature_study
+
+# Adversarial Test
+python main.py --experiment adversarial_test
+
+python main.py --experiment all
+
+Edit YAML files in the configs directory to adjust parameters
+Reduce num_rounds and runs for faster experiments

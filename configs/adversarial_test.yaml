@@ -1,0 +1,40 @@
+# Adversarial resilience experiment configuration
+experiment:
+  name: "adversarial_test"
+  description: "Testing robustness against noisy/adversarial clients"
+  seed: 42
+  runs: 1
+  
+dataset:
+  name: "mnist"
+  batch_size: 32
+  partition: "dirichlet"
+  alpha: 0.5
+  
+model:
+  name: "simple_cnn"
+  in_channels: 1
+  num_classes: 10
+  
+federated:
+  num_clients: 10
+  clients_per_round: 5
+  num_rounds: 15
+  local_epochs: 2
+  learning_rate: 0.01
+  noise_clients: 2  # Number of adversarial clients
+  noise_level: 1.0  # Gaussian noise scale
+  
+aggregators:
+  - name: "fedavg"
+  - name: "median"
+  - name: "feddive"
+    momentum: 0.9
+    temperature: 1.0
+    epsilon: 1e-8
+    normalize_distances: true
+  - name: "feddiver"  # The robust variant
+    momentum: 0.9
+    temperature: 1.0
+    epsilon: 1e-8
+    normalize_distances: true

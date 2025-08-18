@@ -1,0 +1,115 @@
+0.1:
+  accuracy_mean: !!python/object/apply:numpy._core.multiarray.scalar
+  - &id001 !!python/object/apply:numpy.dtype
+    args:
+    - f8
+    - false
+    - true
+    state: !!python/tuple
+    - 3
+    - <
+    - null
+    - null
+    - null
+    - -1
+    - -1
+    - 0
+  - !!binary |
+    Z9Xnaiv27T8=
+  accuracy_std: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAAAAAAAAA=
+  convergence_round_mean: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAAAAAAKEA=
+  convergence_round_std: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAAAAAAAAA=
+0.5:
+  accuracy_mean: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    HHxhMlUw7D8=
+  accuracy_std: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAAAAAAAAA=
+  convergence_round_mean: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAAAAAAKEA=
+  convergence_round_std: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAAAAAAAAA=
+1.0:
+  accuracy_mean: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    KqkT0ETY7j8=
+  accuracy_std: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAAAAAAAAA=
+  convergence_round_mean: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAAAAAAFEA=
+  convergence_round_std: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAAAAAAAAA=
+2.0:
+  accuracy_mean: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    vHSTGARW7j8=
+  accuracy_std: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAAAAAAAAA=
+  convergence_round_mean: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAAAAAAEEA=
+  convergence_round_std: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAAAAAAAAA=
+5.0:
+  accuracy_mean: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    5WGh1jTv7j8=
+  accuracy_std: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAAAAAAAAA=
+  convergence_round_mean: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAAAAAAHEA=
+  convergence_round_std: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAAAAAAAAA=
+10.0:
+  accuracy_mean: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    9GxWfa627j8=
+  accuracy_std: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAAAAAAAAA=
+  convergence_round_mean: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAAAAAAHEA=
+  convergence_round_std: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAAAAAAAAA=

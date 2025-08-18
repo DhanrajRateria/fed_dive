@@ -1,0 +1,47 @@
+fedavg:
+  accuracy_mean: !!python/object/apply:numpy._core.multiarray.scalar
+  - &id001 !!python/object/apply:numpy.dtype
+    args:
+    - f8
+    - false
+    - true
+    state: !!python/tuple
+    - 3
+    - <
+    - null
+    - null
+    - null
+    - -1
+    - -1
+    - 0
+  - !!binary |
+    aW/whclU7z8=
+  accuracy_std: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAAAAAAAAA=
+  loss_mean: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    KxiVylsWsD8=
+  loss_std: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAAAAAAAAA=
+feddive:
+  accuracy_mean: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    KjqSy39I7z8=
+  accuracy_std: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAAAAAAAAA=
+  loss_mean: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    OiNKOendsT8=
+  loss_std: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAAAAAAAAA=

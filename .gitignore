@@ -1,0 +1,9 @@
+federated_env/
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+*.pdb
+*.egg-info/
+dist/
+build/

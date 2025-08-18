@@ -1,0 +1,81 @@
+fedavg:
+  accuracy_mean: !!python/object/apply:numpy._core.multiarray.scalar
+  - &id001 !!python/object/apply:numpy.dtype
+    args:
+    - f8
+    - false
+    - true
+    state: !!python/tuple
+    - 3
+    - <
+    - null
+    - null
+    - null
+    - -1
+    - -1
+    - 0
+  - !!binary |
+    SgwCK4cWuT8=
+  accuracy_std: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAAAAAAAAA=
+  loss_mean: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAA4P///38=
+  loss_std: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAA4P///38=
+feddive:
+  accuracy_mean: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    SgwCK4cWuT8=
+  accuracy_std: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAAAAAAAAA=
+  loss_mean: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAA4P///38=
+  loss_std: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAA4P///38=
+feddiver:
+  accuracy_mean: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    KH6MuWsJ7z8=
+  accuracy_std: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAAAAAAAAA=
+  loss_mean: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    D5wzaTYYuD8=
+  loss_std: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAAAAAAAAA=
+median:
+  accuracy_mean: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    ldQJaCJs7j8=
+  accuracy_std: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAAAAAAAAA=
+  loss_mean: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    1JrmPb/pwz8=
+  loss_std: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAAAAAAAAA=

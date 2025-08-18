@@ -1,0 +1,30 @@
+# Temperature parameter study configuration
+experiment:
+  name: "temperature_study"
+  description: "Analyzing the impact of temperature parameter in FedDive"
+  seed: 42
+  runs: 1
+  
+dataset:
+  name: "mnist"
+  batch_size: 32
+  partition: "dirichlet"
+  alpha: 0.1  # High heterogeneity to showcase temperature impact
+  
+model:
+  name: "simple_cnn"
+  in_channels: 1
+  num_classes: 10
+  
+federated:
+  num_clients: 10
+  clients_per_round: 5
+  num_rounds: 15
+  local_epochs: 2
+  learning_rate: 0.01
+  
+feddive:
+  momentum: 0.9
+  epsilon: 1e-8
+  normalize_distances: true
+  temperatures: [0.1, 0.5, 1.0, 2.0, 5.0, 10.0]  # Varying temperature values

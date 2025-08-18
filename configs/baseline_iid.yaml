@@ -1,0 +1,31 @@
+# Baseline IID experiment configuration
+experiment:
+  name: "baseline_iid"
+  description: "Comparing FedDive with FedAvg on IID data"
+  seed: 42
+  runs: 1  # Number of independent runs for statistical significance
+  
+dataset:
+  name: "mnist"  # Options: mnist, cifar10, synthetic
+  batch_size: 32
+  partition: "iid"
+
+model:
+  name: "simple_cnn"  # Options: simple_cnn, mlp
+  in_channels: 1  # 1 for MNIST, 3 for CIFAR
+  num_classes: 10
+  
+federated:
+  num_clients: 10
+  clients_per_round: 5
+  num_rounds: 15
+  local_epochs: 2
+  learning_rate: 0.01
+  
+aggregators:
+  - name: "fedavg"
+  - name: "feddive"
+    momentum: 0.9
+    temperature: 1.0
+    epsilon: 1e-8
+    normalize_distances: true

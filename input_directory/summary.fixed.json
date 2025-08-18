@@ -1,0 +1,26 @@
+{
+  "fedavg": {
+    "accuracy_mean": 0.0,
+    "accuracy_std": 0.0,
+    "loss_mean": 0.0,
+    "loss_std": 0.0
+  },
+  "feddive": {
+    "accuracy_mean": 0.0,
+    "accuracy_std": 0.0,
+    "loss_mean": 0.0,
+    "loss_std": 0.0
+  },
+  "feddiver": {
+    "accuracy_mean": 0.0,
+    "accuracy_std": 0.0,
+    "loss_mean": 0.0,
+    "loss_std": 0.0
+  },
+  "median": {
+    "accuracy_mean": 0.0,
+    "accuracy_std": 0.0,
+    "loss_mean": 0.0,
+    "loss_std": 0.0
+  }
+}
