@@ -1,0 +1,55 @@
+experiment:
+  name: "cifar10_benchmark"
+  description: "Benchmark CIFAR-10 non-IID benchmark showcasing FedDive supremacy"
+  seed: 42
+  runs: 1
+
+dataset:
+  name: "cifar10"
+  batch_size: 32
+  partition: "dirichlet"
+  alpha_values: [1.0, 0.5, 0.1]  # focus on challenging regimes
+
+model:
+  name: "simple_cnn"
+  in_channels: 3
+  num_classes: 10
+
+federated:
+  num_clients: 10
+  clients_per_round: 5
+  num_rounds: 15
+  local_epochs: 2
+  learning_rate: 0.01
+  optimizer_kwargs:
+    momentum: 0.9
+    weight_decay: 0.0005
+
+aggregators:
+  - name: "fedavg"
+  - name: "fedprox"
+    mu: 0.01
+  - name: "feddive_lw"
+    # Layer-wise divergence on classifier head to handle feature shift
+    divergence_layers: ["fc2.weight", "fc2.bias"]
+    momentum: 0.9
+    # dynamic schedule to control exploration
+    is_dynamic: true
+    temp_schedule: "linear"
+    initial_temp: 3.0
+    final_temp: 1.5
+    epsilon: 1e-8
+    normalize_distances: true
+    # Direction-aware divergence + sample blending
+    distance_metric: "cosine"
+    blend_samples: "sqrt"
+  - name: "feddiver"
+    momentum: 0.9
+    is_dynamic: true
+    temp_schedule: "linear"
+    initial_temp: 3.0
+    final_temp: 1.5
+    epsilon: 1e-8
+    normalize_distances: true
+    distance_metric: "cosine"
+    blend_samples: "sqrt"

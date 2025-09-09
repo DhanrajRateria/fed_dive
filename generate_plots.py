@@ -69,15 +69,18 @@ def plot_summary_barplot(summary: dict, title: str, filename: str):
     plt.tight_layout(); plt.savefig(filename, format='pdf', dpi=300); plt.close()
     print(f"  - Saved summary bar plot: {filename}")
 
-def plot_non_iid_summary(summary: dict, filename: str):
+def plot_non_iid_summary(summary: dict, filename: str, title: str = 'Non-IID Summary'):
     """Creates a grouped bar plot for the Non-IID experiment."""
     if not summary: return
-    data = [{'alpha': f"α={float(a)}",'aggregator': n.upper(),'accuracy': m['accuracy_mean']} for a,d in summary.items() for n,m in d.items()]
+    import pandas as pd
+    import seaborn as sns
+    import matplotlib.pyplot as plt
+    data = [{'alpha': f"α={float(a)}",'aggregator': n.upper().replace("FEDDIVER", "FEDDIVE-R"),'accuracy': m['accuracy_mean']} for a,d in summary.items() for n,m in d.items()]
     df = pd.DataFrame(data)
     alpha_order = sorted([f"α={float(a)}" for a in summary.keys()], key=lambda x: float(x.split('=')[1]), reverse=True)
     plt.figure(figsize=(12, 7))
     sns.barplot(data=df, x='alpha', y='accuracy', hue='aggregator', palette='viridis', order=alpha_order)
-    plt.title('Non-IID Dominance: Accuracy vs. Data Heterogeneity', fontsize=16, weight='bold')
+    plt.title(title, fontsize=16, weight='bold')
     plt.xlabel('Data Distribution (Lower α is more Non-IID)'); plt.ylabel('Final Test Accuracy')
     min_accuracy = df['accuracy'].min()
     plt.ylim(bottom=max(0, min_accuracy - 0.02), top=1.0)
@@ -86,6 +89,7 @@ def plot_non_iid_summary(summary: dict, filename: str):
 
 def plot_temperature_study(summary: dict, filename: str):
     if not summary: return
+    import matplotlib.pyplot as plt
     temps = sorted([float(t) for t in summary.keys()])
     accuracies = [summary[str(t)]['accuracy_mean'] for t in temps]
     conv_rounds = [summary[str(t)]['convergence_round_mean'] for t in temps]
@@ -102,6 +106,7 @@ def plot_temperature_study(summary: dict, filename: str):
 
 def plot_hyperparam_sensitivity(summary: dict, filename: str, param_name: str):
     if not summary: return
+    import matplotlib.pyplot as plt
     param_values = sorted([float(p) for p in summary.keys()])
     accuracies = [summary[str(p)]['accuracy_mean'] for p in param_values]
     
@@ -130,15 +135,15 @@ def main():
             for file in files:
                 if file.endswith("_history.csv"):
                     try:
+                        import pandas as pd
                         df = pd.read_csv(os.path.join(root, file))
                         parts = file.replace("_history.csv", "").split('_')
-                        # --- Updated parsing logic for new experiments ---
                         if parts[0] == 'temp':
                             df['aggregator'] = 'feddive'; df['temperature'] = float(parts[1])
                         elif parts[0] == 'momentum':
                             df['aggregator'] = 'feddive'; df['momentum'] = float(parts[1])
                         elif 'dynamic' in file:
-                            df['aggregator'] = f"{parts[0]}_{parts[1]}_{parts[2]}" # e.g., feddive_dynamic_cosine
+                            df['aggregator'] = f"{parts[0]}_{parts[1]}_{parts[2]}"
                         else:
                             df['aggregator'] = parts[0]
                         
@@ -156,12 +161,11 @@ def main():
             with open(summary_path, 'r') as f: summary = json.load(f)
             print(f"  - Loaded summary from {summary_path}")
 
-        # --- Updated Plotting Logic ---
         if exp_name in ['adversarial_test', 'baseline_iid', 'dynamic_temperature_study']:
             title_map = {
                 'adversarial_test': "Adversarial Resilience",
                 'baseline_iid': "Baseline IID",
-                'dynamic_temperature_study': "Dynamic Temperature on Non-IID CIFAR-10"
+                'dynamic_temperature_study': "Dynamic Temperature on Non-IID"
             }
             title_prefix = title_map.get(exp_name, exp_name.replace('_', ' ').title())
             plot_training_curves(combined_history_df, f'{title_prefix}: Training Progression', os.path.join(exp_dir, f'{exp_name}_curves.pdf'))
@@ -172,7 +176,7 @@ def main():
             plot_non_iid_summary(summary, os.path.join(exp_dir, f'{exp_name}_summary_barplot.pdf'), title=title)
             if not combined_history_df.empty and 'alpha' in combined_history_df.columns:
                 df_alpha_01 = combined_history_df[combined_history_df['alpha'] == 0.1].copy()
-                plot_training_curves(df_alpha_01, f'Performance Under Extreme Non-IID (α=0.1) on {exp_name.split("_")[0].upper()}', os.path.join(exp_dir, f'{exp_name}_alpha_0.1_curves.pdf'))
+                plot_training_curves(df_alpha_01, f'Performance Under Extreme Non-IID (α=0.1) on {title.split()[-1]}', os.path.join(exp_dir, f'{exp_name}_alpha_0.1_curves.pdf'))
             
         elif exp_name == 'temperature_study':
             plot_temperature_study(summary, os.path.join(exp_dir, 'temperature_study_tradeoff.pdf'))
@@ -181,8 +185,7 @@ def main():
         elif exp_name == 'hyperparam_sensitivity':
             plot_hyperparam_sensitivity(summary, os.path.join(exp_dir, 'momentum_sensitivity.pdf'), param_name='momentum')
             if not combined_history_df.empty:
-                # Plot training curves for different momentum values
-                 plot_training_curves(combined_history_df, 'Effect of Momentum on Training Progression', os.path.join(exp_dir, 'momentum_training_curves.pdf'), hue_col='momentum')
+                plot_training_curves(combined_history_df, 'Effect of Momentum on Training Progression', os.path.join(exp_dir, 'momentum_training_curves.pdf'), hue_col='momentum')
 
     print("\nAnalysis complete. All plots saved in their respective experiment directories.")
 

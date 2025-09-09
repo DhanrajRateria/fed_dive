@@ -146,7 +146,7 @@ class FederatedServer:
             except Exception as e:
                 logger.error(f"Server: Unexpected error setting global parameters: {e}", exc_info=True)
                 raise
-            
+
     def train_round(
         self,
         current_round: int,  # Added current_round parameter
@@ -264,10 +264,18 @@ class FederatedServer:
                 logger.error(f"Error during global model evaluation: {e}", exc_info=True)
                 metrics = {"eval_error": str(e)}
 
-        # 7. Record round history
+        # 7. Telemetry from aggregation strategy (for stability analysis)
+        telemetry = None
+        if hasattr(self.aggregation_strategy, "get_telemetry"):
+            try:
+                telemetry = self.aggregation_strategy.get_telemetry()
+            except Exception as e:
+                logger.warning(f"Failed to fetch aggregation telemetry: {e}")
+                telemetry = None
+
         round_duration = time.time() - round_start_time
         round_info = {
-            "round": current_round + 1,  # Use the provided current_round + 1 for 1-based indexing
+            "round": current_round + 1,
             "status": "success",
             "participating_clients": list(participating_clients_info.keys()),
             "client_samples": list(participating_clients_info.values()),
@@ -276,12 +284,11 @@ class FederatedServer:
             "evaluation_metrics": metrics,
             "comm_download_bytes_per_client": download_bytes if participating_clients_info else 0,
             "comm_total_upload_bytes": total_upload_bytes,
-            "comm_avg_upload_bytes_per_client": total_upload_bytes / len(participating_clients_info) if participating_clients_info else 0
+            "comm_avg_upload_bytes_per_client": total_upload_bytes / len(participating_clients_info) if participating_clients_info else 0,
+            "aggregation_telemetry": telemetry
         }
         self.round_history.append(round_info)
-        logger.info(f"Round {current_round + 1}/{total_rounds} completed in {round_duration:.2f}s. "
-                   f"Eval Metrics: {metrics}")
-
+        logger.info(f"Round {current_round + 1}/{total_rounds} completed in {round_duration:.2f}s. Eval Metrics: {metrics}")
         return round_info
 
     def evaluate(self, dataset: Optional[Dataset] = None) -> Dict[str, float]:

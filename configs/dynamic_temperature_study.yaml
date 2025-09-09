@@ -1,0 +1,43 @@
+experiment:
+  name: "dynamic_temperature_study"
+  description: "Compare fixed vs dynamic temperature schedules for FedDive"
+  seed: 42
+  runs: 1
+
+dataset:
+  name: "mnist"
+  batch_size: 32
+  partition: "dirichlet"
+  alpha: 0.1
+
+model:
+  name: "simple_cnn"
+  in_channels: 1
+  num_classes: 10
+
+federated:
+  num_clients: 10
+  clients_per_round: 5
+  num_rounds: 15
+  local_epochs: 2
+  learning_rate: 0.01
+
+feddive:
+  momentum: 0.9
+  epsilon: 1e-8
+  normalize_distances: true
+
+dynamic_settings:
+  - label: "fixed_tau_1.0"
+    mode: "fixed"
+    temperature: 1.0
+  - label: "dynamic_cosine_5to0.5"
+    mode: "dynamic"
+    schedule: "cosine"
+    initial_temp: 5.0
+    final_temp: 0.5
+  - label: "dynamic_linear_3to1.0"
+    mode: "dynamic"
+    schedule: "linear"
+    initial_temp: 3.0
+    final_temp: 1.0

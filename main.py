@@ -17,8 +17,9 @@ def setup_directories():
         "results/temperature_study",
         "results/adversarial_test",
         "results/dynamic_temperature_study",
-        "results/cifar10_tuned",
+        "results/cifar10_benchmark",
         "results/hyperparam_sensitivity",
+        "results/stability_analysis",
         "data"
     ]
     for d in dirs:
@@ -41,6 +42,18 @@ def run_experiment(experiment_name: str, config_path: str = None):
     elif experiment_name == "adversarial_test":
         from experiments.adversarial_test import run_experiment
         run_experiment(config_path)
+    elif experiment_name == "dynamic_temperature_study":
+        from experiments.dynamic_temperature_study import run_experiment
+        run_experiment(config_path)
+    elif experiment_name == "cifar10_benchmark":
+        from experiments.cifar10_benchmark import run_experiment
+        run_experiment(config_path)
+    elif experiment_name == "hyperparam_sensitivity":
+        from experiments.hyperparam_sensitivity import run_experiment
+        run_experiment(config_path)
+    elif experiment_name == "stability_analysis":
+        from experiments.stability_analysis import run_experiment
+        run_experiment(config_path)
     else:
         raise ValueError(f"Unknown experiment: {experiment_name}")
 
@@ -54,6 +67,7 @@ def run_all_experiments():
         "dynamic_temperature_study",
         "cifar10_benchmark",
         "hyperparam_sensitivity",
+        "stability_analysis"
     ]
     
     for exp in experiments:
@@ -69,7 +83,7 @@ def main():
         "--experiment", 
         type=str, 
         default="all",
-        choices=["all", "baseline_iid", "non_iid_performance", "temperature_study", "adversarial_test", "dynamic_temperature_study", "cifar10_tuned", "hyperparam_sensitivity"],
+        choices=["all", "baseline_iid", "non_iid_performance", "temperature_study", "adversarial_test", "dynamic_temperature_study", "cifar10_benchmark", "hyperparam_sensitivity", "stability_analysis"],
         help="Experiment to run (default: all)"
     )
     parser.add_argument(
