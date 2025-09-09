@@ -18,41 +18,13 @@ logger = logging.getLogger(__name__)
 
 
 class AggregationStrategy(ABC):
-    """Base abstract class for aggregation strategies.
-    
-    All concrete aggregation strategies should inherit from this class and
-    implement the aggregate method.
-    """
-
     @abstractmethod
     def aggregate(self, client_updates: List[Tuple[Dict[str, torch.Tensor], float]], 
                  current_round: int = 0, total_rounds: int = 1) -> Dict[str, torch.Tensor]:
-        """Aggregate client model updates.
-        
-        Args:
-            client_updates: List of tuples containing client model parameters and 
-                           their corresponding weights (often sample counts)
-            current_round: Current training round (used for dynamic strategies)
-            total_rounds: Total number of training rounds (used for dynamic strategies)
-            
-        Returns:
-            Aggregated model parameters as a state dictionary
-        """
         pass
 
     @classmethod
     def from_config(cls, config: Dict[str, Any]) -> 'AggregationStrategy':
-        """Create strategy instance from configuration.
-        
-        Args:
-            config: Dictionary containing strategy configuration parameters
-            
-        Returns:
-            An initialized aggregation strategy instance
-            
-        Raises:
-            ValueError: If an unsupported aggregation strategy is specified
-        """
         strategy_type = config.get('name', 'fedavg').lower()
         logger.info(f"Creating aggregation strategy of type: {strategy_type}")
 
@@ -127,30 +99,13 @@ class AggregationStrategy(ABC):
                 distance_metric=str(config.get('distance_metric', 'l2')).lower(),
                 blend_samples=str(config.get('blend_samples', 'none')).lower(),
             )
-        
         else:
             raise ValueError(f"Unsupported aggregation strategy: {strategy_type}")
 
 
 class FedAvg(AggregationStrategy):
-    """Federated Averaging (FedAvg) aggregation strategy.
-    
-    Implementation of the standard FedAvg algorithm (McMahan et al., 2017),
-    which performs weighted averaging of client updates.
-    """
-
     def aggregate(self, client_updates: List[Tuple[Dict[str, torch.Tensor], float]], 
                  current_round: int = 0, total_rounds: int = 1) -> Dict[str, torch.Tensor]:
-        """Aggregate using weighted averaging.
-        
-        Args:
-            client_updates: List of tuples containing (model_parameters, sample_count)
-            current_round: Current training round (ignored in FedAvg)
-            total_rounds: Total number of rounds (ignored in FedAvg)
-            
-        Returns:
-            Weighted averaged model parameters
-        """
         num_clients = len(client_updates)
         if num_clients == 0:
             logger.warning("FedAvg: No client updates provided for aggregation.")
@@ -170,7 +125,6 @@ class FedAvg(AggregationStrategy):
             return {}
         aggregated_params = {name: torch.zeros_like(tensor, dtype=torch.float32) for name, tensor in first_client_params.items()}
 
-        # Perform weighted averaging
         for client_idx, client_params in enumerate(parameters_list):
             client_weight = normalized_weights[client_idx]
             if not client_params:
@@ -178,29 +132,12 @@ class FedAvg(AggregationStrategy):
                 continue
             for name, param_tensor in client_params.items():
                 if name in aggregated_params:
-                    # Ensure tensors are float for accumulation if they aren't already
                     aggregated_params[name] += client_weight * param_tensor.float()
-                else:
-                     logger.warning(f"FedAvg: Parameter '{name}' from client {client_idx} "
-                                    f"not found in the first client's structure. Skipping.")
-
-        logger.info("FedAvg: Aggregation complete.")
         return aggregated_params
 
 
 class FedProx(FedAvg):
-    """Server-side aggregation for FedProx (identical to FedAvg).
-    
-    Note: FedProx differs from FedAvg in the client optimization process 
-    (with proximal term), but server aggregation remains the same as FedAvg.
-    """
-    
     def __init__(self, mu: float = 0.01):
-        """Initialize FedProx server aggregation.
-        
-        Args:
-            mu: Proximal term weight (used client-side, not in server aggregation)
-        """
         super().__init__()
         self.mu = float(mu)
 
@@ -494,105 +431,25 @@ class FedDiveR(FedDive):
                     stack.append(cp[name].unsqueeze(0))
             if not stack:
                 continue
-                
             stacked_vals = torch.cat(stack, dim=0)
-            # Compute median along client dimension (dim=0)
             median_tensor = torch.median(stacked_vals, dim=0).values
             median_params[name] = median_tensor
-            
         return median_params
-
-    def _calc_velocity(self, robust_global_params: Dict[str, torch.Tensor]):
-        """Update velocity using robust consensus.
-        
-        Args:
-            robust_global_params: Robust global parameters (from median)
-        """
-        # Compute deltas from robust global to previous global
-        deltas = {}
-        for name, param in robust_global_params.items():
-            prev_param = self.previous_global_params.get(name, None)
-            if prev_param is not None:
-                deltas[name] = param - prev_param
-            else:
-                deltas[name] = param
-
-        # Update velocity with momentum
-        with torch.no_grad():
-            for name in deltas:
-                if name not in self.velocity:
-                    self.velocity[name] = torch.zeros_like(deltas[name])
-                self.velocity[name] = (
-                    self.momentum * self.velocity[name]
-                    + (1.0 - self.momentum) * deltas[name]
-                )
-
-    def _calc_distances(
-        self, client_params_list: List[Dict[str, torch.Tensor]]
-    ) -> np.ndarray:
-        """Calculate distances between client parameters and expected consensus position.
-        
-        Args:
-            client_params_list: List of client parameter dictionaries
-            
-        Returns:
-            Array of L2 distances for each client
-        """
-        # Expected position = previous params + velocity
-        expected_position = {}
-        for name, prev_param in self.previous_global_params.items():
-            vel = self.velocity.get(name, torch.zeros_like(prev_param))
-            expected_position[name] = prev_param + vel
-
-        # Calculate L2 distances
-        distances = []
-        for client_params in client_params_list:
-            dist_sq = 0.0
-            for name, expected_val in expected_position.items():
-                client_val = client_params.get(name, None)
-                if client_val is not None:
-                    diff = client_val - expected_val
-                    dist_sq += torch.sum(diff * diff).item()
-                else:
-                    dist_sq += torch.sum(expected_val * expected_val).item()
-            distances.append(np.sqrt(dist_sq))
-            
-        return np.array(distances)
 
     def aggregate(self, client_updates: List[Tuple[Dict[str, torch.Tensor], float]], 
                  current_round: int = 0, total_rounds: int = 1) -> Dict[str, torch.Tensor]:
-        """Aggregate client parameters using FedDiveR algorithm.
-        
-        Args:
-            client_updates: List of tuples containing (model_parameters, sample_count)
-            current_round: Current training round (used for dynamic temperature)
-            total_rounds: Total number of rounds (used for dynamic temperature)
-            
-        Returns:
-            Aggregated model parameters using robust diversity-weighted averaging
-        """
         if not client_updates:
             logger.warning("[FedDiveR] No client updates received. Returning empty aggregation.")
             return {}
-            
-        # Update temperature if using dynamic mode
         self._update_temperature(current_round, total_rounds)
 
-        # Extract client param dicts
         params_list = [cp for cp, _ in client_updates]
         if not params_list[0]:
             logger.warning("[FedDiveR] The first client update is empty. Returning empty dict.")
             return {}
 
-        num_clients = len(params_list)
-        logger.info(f"[FedDiveR] Aggregating updates from {num_clients} clients "
-                   f"(temperature={self.temperature:.4f}).")
-
-        # 1) Compute robust consensus (median) for momentum
         robust_global_params = self._calc_median_params(params_list)
-        logger.debug("[FedDiveR] Computed robust consensus using parameter-wise median.")
 
-        # If first round or mismatch in state, initialize
         if not self.velocity or not self.previous_global_params:
             self._init_state(robust_global_params)
 
@@ -617,29 +474,21 @@ class FedDiveR(FedDive):
         outlier_count = 0
         if len(distances) > 1:
             median_dist = np.median(distances)
-            # MAD: Median Absolute Deviation
             mad = np.median(np.abs(distances - median_dist))
-            # Robust Z-score with 0.6745 scaling factor (to make MAD comparable to std)
             robust_z_scores = np.abs(0.6745 * (distances - median_dist) / (mad + self.epsilon))
             is_outlier = robust_z_scores > 3.0
             outlier_count = int(np.sum(is_outlier))
 
-        # 5) Normalize distances if enabled
         if self.normalize_distances and len(distances) > 1:
             mean_val = float(distances.mean())
             std_val = float(distances.std())
             if std_val < self.epsilon:
                 std_val = 1.0
             distances = (distances - mean_val) / std_val
-            logger.debug(f"[FedDiveR] Normalized distances: {distances}")
 
-        # 6) Temperature-scaled softmax weighting
         scaled = distances / float(max(self.temperature, self.epsilon))
-        # Subtract max for numerical stability
         scaled = scaled - np.max(scaled)
         exp_vals = np.exp(scaled)
-        
-        # Zero out outlier weights
         exp_vals[is_outlier] = 0.0
 
         sum_exp_vals = np.sum(exp_vals)
