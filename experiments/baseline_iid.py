@@ -80,7 +80,6 @@ def load_dataset(config: Dict) -> Tuple[Dataset, Dataset]:
 def create_model(config: Dict) -> torch.nn.Module:
     """Create model based on config."""
     model_name = config['model']['name'].lower()
-    
     if model_name == 'simple_cnn':
         model = SimpleCNN(
             in_channels=config['model']['in_channels'],

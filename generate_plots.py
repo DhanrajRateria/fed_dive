@@ -100,8 +100,23 @@ def plot_temperature_study(summary: dict, filename: str):
     ax2.legend(lines + lines2, labels + labels2, loc='best'); fig.tight_layout(); plt.savefig(filename, format='pdf', dpi=300); plt.close()
     print(f"  - Saved Temperature study plot: {filename}")
 
+def plot_hyperparam_sensitivity(summary: dict, filename: str, param_name: str):
+    if not summary: return
+    param_values = sorted([float(p) for p in summary.keys()])
+    accuracies = [summary[str(p)]['accuracy_mean'] for p in param_values]
+    
+    plt.figure(figsize=(10, 6))
+    plt.plot(param_values, accuracies, marker='o', linestyle='-')
+    plt.title(f'FedDive Sensitivity to {param_name.capitalize()}', fontsize=16, weight='bold')
+    plt.xlabel(f'{param_name.capitalize()} Value')
+    plt.ylabel('Final Test Accuracy')
+    plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+    plt.tight_layout()
+    plt.savefig(filename, format='pdf', dpi=300)
+    plt.close()
+    print(f"  - Saved {param_name} sensitivity plot: {filename}")
+
 def main():
-    """Finds all experiment results in CSV/JSON and generates plots."""
     results_dir = 'results'
     if not os.path.isdir(results_dir):
         print(f"Error: Directory '{results_dir}' not found."); return
@@ -109,9 +124,7 @@ def main():
     for exp_name in sorted(os.listdir(results_dir)):
         exp_dir = os.path.join(results_dir, exp_name)
         if not os.path.isdir(exp_dir): continue
-
         print(f"\nProcessing Experiment: {exp_name.upper()}")
-        
         all_history_dfs = []
         for root, _, files in os.walk(exp_dir):
             for file in files:
@@ -119,14 +132,18 @@ def main():
                     try:
                         df = pd.read_csv(os.path.join(root, file))
                         parts = file.replace("_history.csv", "").split('_')
+                        # --- Updated parsing logic for new experiments ---
                         if parts[0] == 'temp':
-                            df['aggregator'] = 'feddive'
-                            df['temperature'] = float(parts[1])
-                            run_part = [p for p in parts if p.startswith('run')]
-                            df['run'] = int(run_part[0].replace('run', '')) if run_part else 0
+                            df['aggregator'] = 'feddive'; df['temperature'] = float(parts[1])
+                        elif parts[0] == 'momentum':
+                            df['aggregator'] = 'feddive'; df['momentum'] = float(parts[1])
+                        elif 'dynamic' in file:
+                            df['aggregator'] = f"{parts[0]}_{parts[1]}_{parts[2]}" # e.g., feddive_dynamic_cosine
                         else:
                             df['aggregator'] = parts[0]
-                            df['run'] = int(parts[1].replace('run', ''))
+                        
+                        run_part = [p for p in parts if p.startswith('run')]
+                        df['run'] = int(run_part[0].replace('run', '')) if run_part else 0
                         if 'alpha_' in root: df['alpha'] = float(root.split('alpha_')[-1])
                         all_history_dfs.append(df)
                     except Exception as e: print(f"  - WARNING: Could not process {file}: {e}")
@@ -139,20 +156,33 @@ def main():
             with open(summary_path, 'r') as f: summary = json.load(f)
             print(f"  - Loaded summary from {summary_path}")
 
-        if exp_name == 'adversarial_test' or exp_name == 'baseline_iid':
-            title_prefix = "Adversarial Resilience" if exp_name == 'adversarial_test' else "Baseline IID"
+        # --- Updated Plotting Logic ---
+        if exp_name in ['adversarial_test', 'baseline_iid', 'dynamic_temperature_study']:
+            title_map = {
+                'adversarial_test': "Adversarial Resilience",
+                'baseline_iid': "Baseline IID",
+                'dynamic_temperature_study': "Dynamic Temperature on Non-IID CIFAR-10"
+            }
+            title_prefix = title_map.get(exp_name, exp_name.replace('_', ' ').title())
             plot_training_curves(combined_history_df, f'{title_prefix}: Training Progression', os.path.join(exp_dir, f'{exp_name}_curves.pdf'))
             plot_summary_barplot(summary, f'{title_prefix}: Final Accuracy', os.path.join(exp_dir, f'{exp_name}_summary.pdf'))
 
-        elif exp_name == 'non_iid_performance':
-            plot_non_iid_summary(summary, os.path.join(exp_dir, 'non_iid_summary_barplot.pdf'))
+        elif exp_name in ['non_iid_performance', 'cifar10_benchmark']:
+            title = 'Non-IID on MNIST' if 'non_iid' in exp_name else 'Non-IID on CIFAR-10'
+            plot_non_iid_summary(summary, os.path.join(exp_dir, f'{exp_name}_summary_barplot.pdf'), title=title)
             if not combined_history_df.empty and 'alpha' in combined_history_df.columns:
                 df_alpha_01 = combined_history_df[combined_history_df['alpha'] == 0.1].copy()
-                plot_training_curves(df_alpha_01, 'Performance Under Extreme Non-IID (α=0.1)', os.path.join(exp_dir, 'non_iid_alpha_0.1_curves.pdf'))
+                plot_training_curves(df_alpha_01, f'Performance Under Extreme Non-IID (α=0.1) on {exp_name.split("_")[0].upper()}', os.path.join(exp_dir, f'{exp_name}_alpha_0.1_curves.pdf'))
             
         elif exp_name == 'temperature_study':
             plot_temperature_study(summary, os.path.join(exp_dir, 'temperature_study_tradeoff.pdf'))
             plot_training_curves(combined_history_df, 'Effect of Temperature on Training Progression', os.path.join(exp_dir, 'temperature_training_curves.pdf'), hue_col='temperature')
+        
+        elif exp_name == 'hyperparam_sensitivity':
+            plot_hyperparam_sensitivity(summary, os.path.join(exp_dir, 'momentum_sensitivity.pdf'), param_name='momentum')
+            if not combined_history_df.empty:
+                # Plot training curves for different momentum values
+                 plot_training_curves(combined_history_df, 'Effect of Momentum on Training Progression', os.path.join(exp_dir, 'momentum_training_curves.pdf'), hue_col='momentum')
 
     print("\nAnalysis complete. All plots saved in their respective experiment directories.")
 

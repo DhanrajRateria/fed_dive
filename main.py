@@ -16,6 +16,9 @@ def setup_directories():
         "results/non_iid_performance",
         "results/temperature_study",
         "results/adversarial_test",
+        "results/dynamic_temperature_study",
+        "results/cifar10_tuned",
+        "results/hyperparam_sensitivity",
         "data"
     ]
     for d in dirs:
@@ -47,7 +50,10 @@ def run_all_experiments():
         # "baseline_iid",
         # "non_iid_performance",
         "temperature_study",
-        "adversarial_test"
+        "adversarial_test",
+        "dynamic_temperature_study",
+        "cifar10_benchmark",
+        "hyperparam_sensitivity",
     ]
     
     for exp in experiments:
@@ -63,7 +69,7 @@ def main():
         "--experiment", 
         type=str, 
         default="all",
-        choices=["all", "baseline_iid", "non_iid_performance", "temperature_study", "adversarial_test"],
+        choices=["all", "baseline_iid", "non_iid_performance", "temperature_study", "adversarial_test", "dynamic_temperature_study", "cifar10_tuned", "hyperparam_sensitivity"],
         help="Experiment to run (default: all)"
     )
     parser.add_argument(
