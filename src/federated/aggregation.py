@@ -75,7 +75,8 @@ class AggregationStrategy(ABC):
                 epsilon=float(config.get('epsilon', 1e-8)),
                 normalize_distances=bool(config.get('normalize_distances', True)),
                 distance_metric=str(config.get('distance_metric', 'l2')).lower(),
-                blend_samples=str(config.get('blend_samples', 'none')).lower()
+                blend_samples=str(config.get('blend_samples', 'none')).lower(),
+                warmup_rounds=int(config.get('warmup_rounds', 0))
             )
             if config.get('is_dynamic', False):
                 logger.info("Initializing FedDive with DYNAMIC temperature scheduling.")
@@ -99,7 +100,8 @@ class AggregationStrategy(ABC):
                 epsilon=float(config.get('epsilon', 1e-8)),
                 normalize_distances=bool(config.get('normalize_distances', True)),
                 distance_metric=str(config.get('distance_metric', 'l2')).lower(),
-                blend_samples=str(config.get('blend_samples', 'none')).lower()
+                blend_samples=str(config.get('blend_samples', 'none')).lower(),
+                warmup_rounds=int(config.get('warmup_rounds', 0))
             )
             if config.get('is_dynamic', False):
                 logger.info("Initializing FedDiveR with DYNAMIC temperature scheduling.")
@@ -120,12 +122,14 @@ class AggregationStrategy(ABC):
             logger.info("Initializing FedDive-LayerWise (FedDive-LW).")
             return FedDiveLW(
                 divergence_layers=config.get('divergence_layers'),
+                backbone_blend=str(config.get('backbone_blend', 'sqrt')).lower(),
                 momentum=float(config.get('momentum', 0.9)),
                 epsilon=float(config.get('epsilon', 1e-8)),
                 temperature=float(config.get('temperature', 1.0)),
                 normalize_distances=bool(config.get('normalize_distances', True)),
                 distance_metric=str(config.get('distance_metric', 'l2')).lower(),
                 blend_samples=str(config.get('blend_samples', 'none')).lower(),
+                warmup_rounds=int(config.get('warmup_rounds', 0))
             )
         else:
             raise ValueError(f"Unsupported aggregation strategy: {strategy_type}")
@@ -398,6 +402,7 @@ class FedDive(AggregationStrategy):
     - Distance metrics: 'l2' (default) or 'cosine' (directional divergence w.r.t velocity)
     - Sample blending: 'none' (default), 'sqrt', or 'linear' (post-softmax blend with sample fractions)
     - Dynamic temperature scheduling: cosine or linear annealing
+    - Optional warmup rounds: use uniform or sample-based weights for initial rounds
     
     Reference: FedDive algorithm (Rateria et al., 2025)
     """
@@ -413,7 +418,8 @@ class FedDive(AggregationStrategy):
         initial_temp: float = 5.0,
         final_temp: float = 0.5,
         distance_metric: str = 'l2',
-        blend_samples: str = 'none'
+        blend_samples: str = 'none',
+        warmup_rounds: int = 0
     ):
         """Initialize FedDive aggregation strategy.
         
@@ -428,6 +434,7 @@ class FedDive(AggregationStrategy):
             final_temp: Final temperature for dynamic scheduling
             distance_metric: Method to calculate distances ('l2' or 'cosine')
             blend_samples: How to blend diversity weights with sample counts ('none', 'sqrt', 'linear')
+            warmup_rounds: Number of initial rounds to use uniform/sample-based weights
             
         Raises:
             ValueError: If momentum is not in [0,1)
@@ -454,7 +461,10 @@ class FedDive(AggregationStrategy):
         # Distance metric and sample blending options
         self.distance_metric = distance_metric
         self.blend_samples = blend_samples
-        logger.info(f"FedDive using distance metric '{distance_metric}' and sample blend mode '{blend_samples}'")
+        self.warmup_rounds = int(warmup_rounds)
+        
+        logger.info(f"FedDive using distance metric '{distance_metric}', sample blend mode '{blend_samples}', "
+                   f"and {warmup_rounds} warmup rounds")
 
         # Internal state variables that persist across rounds
         self.velocity: Dict[str, torch.Tensor] = {}
@@ -555,37 +565,53 @@ class FedDive(AggregationStrategy):
         """
         # Expected position = previous params + velocity
         expected_position = self._expected_position()
+
+        # Precompute flattened previous and velocity for delta-based metrics
+        prev_flat = _flatten_state_dict(self.previous_global_params)
+        vel_flat = _flatten_state_dict(self.velocity) if self.velocity else torch.zeros_like(prev_flat)
+        vel_norm = float(torch.norm(vel_flat) + 1e-12)
+
+        distances = []
         
-        if self.distance_metric == 'l2':
-            # L2 distance to expected position (default)
-            distances = []
-            for client_params in client_params_list:
-                dist_sq = 0.0
-                for name, expected_val in expected_position.items():
-                    client_val = client_params.get(name, None)
-                    if client_val is not None:
-                        diff = client_val - expected_val
-                        dist_sq += torch.sum(diff * diff).item()
-                    else:
-                        dist_sq += torch.sum(expected_val * expected_val).item()
-                distances.append(np.sqrt(dist_sq))
-            return np.array(distances)
-            
-        elif self.distance_metric == 'cosine':
-            # Cosine distance measures directional divergence from velocity vector
-            # Flatten once for speed
-            prev_flat = _flatten_state_dict(self.previous_global_params)
-            vel_flat = _flatten_state_dict(self.velocity)
-            vel_norm = float(torch.norm(vel_flat) + 1e-12)
-            
-            distances = []
+        if self.distance_metric in ('l2', 'cosine'):
+            # Existing logic (unchanged)
+            if self.distance_metric == 'l2':
+                for client_params in client_params_list:
+                    dist_sq = 0.0
+                    for name, expected_val in expected_position.items():
+                        client_val = client_params.get(name, None)
+                        if client_val is not None:
+                            diff = client_val - expected_val
+                            dist_sq += torch.sum(diff * diff).item()
+                        else:
+                            dist_sq += torch.sum(expected_val * expected_val).item()
+                    distances.append(np.sqrt(dist_sq))
+                return np.array(distances)
+            else:  # cosine
+                for client_params in client_params_list:
+                    client_flat = _flatten_state_dict(client_params)
+                    diff = client_flat - prev_flat
+                    diff_norm = float(torch.norm(diff) + 1e-12)
+                    cos_sim = float(torch.dot(diff, vel_flat) / (diff_norm * vel_norm))
+                    distances.append(1.0 - cos_sim)
+                return np.array(distances)
+
+        elif self.distance_metric == 'update_cosine':
+            # Cosine between client delta (w_i - w_prev) and velocity
             for client_params in client_params_list:
                 client_flat = _flatten_state_dict(client_params)
-                diff = client_flat - prev_flat
-                diff_norm = float(torch.norm(diff) + 1e-12)
-                cos_sim = float(torch.dot(diff, vel_flat) / (diff_norm * vel_norm))
-                d = 1.0 - cos_sim  # in [0,2], larger => more directionally divergent
-                distances.append(d)
+                delta = client_flat - prev_flat
+                delta_norm = float(torch.norm(delta) + 1e-12)
+                cos_sim = float(torch.dot(delta, vel_flat) / (delta_norm * vel_norm))
+                distances.append(1.0 - cos_sim)
+            return np.array(distances)
+
+        elif self.distance_metric == 'update_l2':
+            for client_params in client_params_list:
+                client_flat = _flatten_state_dict(client_params)
+                delta = client_flat - prev_flat
+                diff = delta - vel_flat
+                distances.append(float(torch.norm(diff)))
             return np.array(distances)
         else:
             raise ValueError(f"Unknown distance_metric: {self.distance_metric}")
@@ -684,6 +710,38 @@ class FedDive(AggregationStrategy):
         self._calc_velocity(new_global_params)
         logger.debug("[FedDive] Updated velocity.")
 
+        # Warmup: skip diversity weights in first N rounds
+        if current_round < self.warmup_rounds:
+            # use uniform or sample-based weights
+            sample_counts = np.array([w for _, w in client_updates], dtype=float)
+            if self.blend_samples in ('sqrt', 'linear') and sample_counts.sum() > 0:
+                frac = sample_counts / sample_counts.sum()
+                warm_weights = np.sqrt(frac) if self.blend_samples == 'sqrt' else frac
+                warm_weights = warm_weights / warm_weights.sum()
+            else:
+                warm_weights = np.ones(num_clients, dtype=float) / num_clients
+
+            aggregated_params = { name: torch.zeros_like(tensor) for name, tensor in params_list[0].items() }
+            for idx, (client_params, _) in enumerate(client_updates):
+                w = float(warm_weights[idx])
+                for name, tensor in client_params.items():
+                    if name not in aggregated_params:
+                        aggregated_params[name] = torch.zeros_like(tensor)
+                    aggregated_params[name] += w * tensor
+
+            logger.info(f"[FedDive] Using warmup weights in round {current_round} (warmup={self.warmup_rounds})")
+            self.previous_global_params = { name: p.clone() for name, p in aggregated_params.items() }
+            self._last_telemetry = {
+                "is_dynamic": float(1.0 if self.is_dynamic else 0.0),
+                "temperature": float(self.temperature),
+                "velocity_l2": self._velocity_l2_norm(),
+                "dist_mean_raw": float('nan'),
+                "dist_std_raw": float('nan'),
+                "dist_max_raw": float('nan'),
+                "weight_entropy": float(-np.sum(warm_weights * (np.log(warm_weights + 1e-12))))
+            }
+            return aggregated_params
+
         # Step 3: Calculate distances from the expected consensus
         distances = self._calc_distances(params_list)
         raw_dist_mean = float(distances.mean()) if len(distances) > 0 else 0.0
@@ -756,7 +814,7 @@ class FedDiveR(FedDive):
         """
         super().__init__(**kwargs)
         logger.info(f"FedDiveR initialized with {self.distance_metric} distance, "
-                   f"{self.blend_samples} sample blending")
+                   f"{self.blend_samples} sample blending, and {self.warmup_rounds} warmup rounds")
 
     def _calc_median_params(self, client_params_list: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
         """Compute the parameter-wise median across client updates.
@@ -814,6 +872,39 @@ class FedDiveR(FedDive):
 
         num_clients = len(params_list)
         logger.info(f"[FedDiveR] Aggregating updates from {num_clients} clients (temperature={self.temperature:.4f}).")
+
+        # Warmup handling: identical to FedDive
+        if current_round < self.warmup_rounds:
+            sample_counts = np.array([w for _, w in client_updates], dtype=float)
+            if self.blend_samples in ('sqrt', 'linear') and sample_counts.sum() > 0:
+                frac = sample_counts / sample_counts.sum()
+                warm_weights = np.sqrt(frac) if self.blend_samples == 'sqrt' else frac
+                warm_weights = warm_weights / warm_weights.sum()
+            else:
+                warm_weights = np.ones(num_clients, dtype=float) / num_clients
+                
+            aggregated_params = { name: torch.zeros_like(tensor) for name, tensor in params_list[0].items() }
+            for idx, (client_params, _) in enumerate(client_updates):
+                w = float(warm_weights[idx])
+                for name, tensor in client_params.items():
+                    if name not in aggregated_params:
+                        aggregated_params[name] = torch.zeros_like(tensor)
+                    aggregated_params[name] += w * tensor
+                    
+            logger.info(f"[FedDiveR] Using warmup weights in round {current_round} (warmup={self.warmup_rounds})")
+            self.previous_global_params = { name: p.clone() for name, p in aggregated_params.items() }
+            self._last_telemetry = {
+                "is_dynamic": float(1.0 if self.is_dynamic else 0.0),
+                "temperature": float(self.temperature),
+                "velocity_l2": self._velocity_l2_norm(),
+                "dist_mean_raw": float('nan'),
+                "dist_std_raw": float('nan'),
+                "dist_max_raw": float('nan'),
+                "weight_entropy": float(-np.sum(warm_weights * (np.log(warm_weights + 1e-12)))),
+                "outlier_count": 0.0,
+                "fallback_median": 0.0
+            }
+            return aggregated_params
 
         # 1) Compute robust consensus (median) for momentum
         robust_global_params = self._calc_median_params(params_list)
@@ -936,15 +1027,19 @@ class FedDiveLW(FedDive):
     """FedDive-LayerWise: A refined version of FedDive that calculates divergence
     only on a specified subset of model layers (e.g., the classifier head).
     
+    This variant applies diversity-based weights to the specified divergence layers
+    while using sample-based weights for the remaining backbone layers.
+    
     Like the base FedDive, supports distance metrics 'l2' or 'cosine', and
     sample blending options.
     """
     
-    def __init__(self, divergence_layers: List[str], **kwargs):
+    def __init__(self, divergence_layers: List[str], backbone_blend: str = 'sqrt', **kwargs):
         """Initialize FedDive-LayerWise aggregation strategy.
         
         Args:
             divergence_layers: List of layer names to use for divergence calculation
+            backbone_blend: How to blend sample counts for backbone layers ('none', 'sqrt', 'linear')
             **kwargs: Additional arguments for FedDive
             
         Raises:
@@ -954,7 +1049,9 @@ class FedDiveLW(FedDive):
         if not divergence_layers:
             raise ValueError("FedDiveLW requires a list of 'divergence_layers'.")
         self.divergence_layers = divergence_layers
+        self.backbone_blend = backbone_blend
         logger.info(f"[FedDive-LW] Initialized. Divergence will be computed on layers: {self.divergence_layers}")
+        logger.info(f"[FedDive-LW] Backbone layers will use '{backbone_blend}' sample blending")
 
     def _expected_position(self) -> Dict[str, torch.Tensor]:
         """Override to calculate expected position only for specified layers.
@@ -971,7 +1068,7 @@ class FedDiveLW(FedDive):
         return expected_position
 
     def _calc_distances(self, client_params_list: List[Dict[str, torch.Tensor]]) -> np.ndarray:
-        """Calculate distances based only on specified layers.
+        """Calculate distances between client parameters and expected consensus position.
         
         Args:
             client_params_list: List of client parameter dictionaries
@@ -979,38 +1076,201 @@ class FedDiveLW(FedDive):
         Returns:
             Array of distances for each client
         """
-        # Get expected position for specified layers
+        # Expected position = previous params + velocity
         expected_position = self._expected_position()
+
+        # Precompute flattened previous and velocity for delta-based metrics
+        prev_flat = _flatten_state_dict(self.previous_global_params)
+        vel_flat = _flatten_state_dict(self.velocity) if self.velocity else torch.zeros_like(prev_flat)
+        vel_norm = float(torch.norm(vel_flat) + 1e-12)
+
+        distances = []
         
-        if self.distance_metric == 'l2':
-            # L2 distance using only specified layers
-            distances = []
+        if self.distance_metric in ('l2', 'cosine'):
+            # Existing logic (unchanged)
+            if self.distance_metric == 'l2':
+                for client_params in client_params_list:
+                    dist_sq = 0.0
+                    for name, expected_val in expected_position.items():
+                        client_val = client_params.get(name, None)
+                        if client_val is not None:
+                            diff = client_val - expected_val
+                            dist_sq += torch.sum(diff * diff).item()
+                        else:
+                            dist_sq += torch.sum(expected_val * expected_val).item()
+                    distances.append(np.sqrt(dist_sq))
+                return np.array(distances)
+            else:  # cosine
+                for client_params in client_params_list:
+                    client_flat = _flatten_state_dict(client_params)
+                    diff = client_flat - prev_flat
+                    diff_norm = float(torch.norm(diff) + 1e-12)
+                    cos_sim = float(torch.dot(diff, vel_flat) / (diff_norm * vel_norm))
+                    distances.append(1.0 - cos_sim)
+                return np.array(distances)
+
+        elif self.distance_metric == 'update_cosine':
+            # Cosine between client delta (w_i - w_prev) and velocity
             for client_params in client_params_list:
-                dist_sq = 0.0
-                for name in self.divergence_layers:
-                    if name in expected_position and name in client_params:
-                        diff = client_params[name] - expected_position[name]
-                        dist_sq += torch.sum(diff * diff).item()
-                distances.append(np.sqrt(dist_sq))
-            return np.array(distances)
-            
-        elif self.distance_metric == 'cosine':
-            # Cosine distance using only specified layers
-            # Flatten only the selected layers
-            prev_flat = torch.cat([self.previous_global_params[name].detach().flatten().float()
-                                  for name in self.divergence_layers if name in self.previous_global_params])
-            vel_flat = torch.cat([self.velocity.get(name, torch.zeros_like(self.previous_global_params[name])).detach().flatten().float()
-                                  for name in self.divergence_layers if name in self.previous_global_params])
-            vel_norm = float(torch.norm(vel_flat) + 1e-12)
-            
-            distances = []
-            for client_params in client_params_list:
-                client_flat = torch.cat([client_params[name].detach().flatten().float()
-                                        for name in self.divergence_layers if name in client_params])
-                diff = client_flat - prev_flat
-                diff_norm = float(torch.norm(diff) + 1e-12)
-                cos_sim = float(torch.dot(diff, vel_flat) / (diff_norm * vel_norm))
+                client_flat = _flatten_state_dict(client_params)
+                delta = client_flat - prev_flat
+                delta_norm = float(torch.norm(delta) + 1e-12)
+                cos_sim = float(torch.dot(delta, vel_flat) / (delta_norm * vel_norm))
                 distances.append(1.0 - cos_sim)
+            return np.array(distances)
+
+        elif self.distance_metric == 'update_l2':
+            for client_params in client_params_list:
+                client_flat = _flatten_state_dict(client_params)
+                delta = client_flat - prev_flat
+                diff = delta - vel_flat
+                distances.append(float(torch.norm(diff)))
             return np.array(distances)
         else:
             raise ValueError(f"Unknown distance_metric: {self.distance_metric}")
+
+    def aggregate(self, client_updates: List[Tuple[Dict[str, torch.Tensor], float]], 
+                 current_round: int = 0, total_rounds: int = 1) -> Dict[str, torch.Tensor]:
+        """Aggregate client parameters using FedDiveLW algorithm.
+        
+        Applies diversity-based weights only to the specified divergence layers,
+        while using sample-based weights for backbone layers.
+        
+        Args:
+            client_updates: List of tuples containing (model_parameters, sample_count)
+            current_round: Current training round (used for dynamic temperature)
+            total_rounds: Total number of rounds (used for dynamic temperature)
+            
+        Returns:
+            Aggregated model parameters using layer-specific weighting strategies
+        """
+        # Base validation and initialization
+        if not client_updates:
+            logger.warning("[FedDive-LW] No client updates received. Returning empty aggregation.")
+            return {}
+        
+        self._update_temperature(current_round, total_rounds)
+        params_list = [cp for cp, _ in client_updates]
+        if not params_list[0]:
+            logger.warning("[FedDive-LW] The first client update is empty. Returning empty dict.")
+            return {}
+            
+        num_clients = len(params_list)
+        logger.info(f"[FedDive-LW] Aggregating updates from {num_clients} clients (temperature={self.temperature:.4f}).")
+
+        # Baseline mean for velocity update and initialization
+        new_global_params = {}
+        for name, tensor in params_list[0].items():
+            new_global_params[name] = torch.zeros_like(tensor)
+        for client_params in params_list:
+            for name, tensor in client_params.items():
+                if name not in new_global_params:
+                    new_global_params[name] = torch.zeros_like(tensor)
+                new_global_params[name] += tensor
+        for name in new_global_params:
+            new_global_params[name] /= float(num_clients)
+
+        # Initialize velocity and previous params if needed
+        if not self.velocity or not self.previous_global_params:
+            self._init_state(new_global_params)
+            logger.debug("[FedDive-LW] Initialized state vectors.")
+            
+        # Update velocity for tracking
+        self._calc_velocity(new_global_params)
+        logger.debug("[FedDive-LW] Updated velocity.")
+
+        # Warmup handling: use sample-based weights for all layers
+        if current_round < self.warmup_rounds:
+            sample_counts = np.array([w for _, w in client_updates], dtype=float)
+            if (self.backbone_blend in ('sqrt', 'linear')) and sample_counts.sum() > 0:
+                frac = sample_counts / sample_counts.sum()
+                warm = np.sqrt(frac) if self.backbone_blend == 'sqrt' else frac
+                warm = warm / warm.sum()
+            else:
+                warm = np.ones(num_clients, dtype=float) / num_clients
+                
+            aggregated_params = { name: torch.zeros_like(tensor) for name, tensor in params_list[0].items() }
+            for idx, (client_params, _) in enumerate(client_updates):
+                w = float(warm[idx])
+                for name, tensor in client_params.items():
+                    if name not in aggregated_params:
+                        aggregated_params[name] = torch.zeros_like(tensor)
+                    aggregated_params[name] += w * tensor
+                    
+            logger.info(f"[FedDive-LW] Using warmup weights in round {current_round} (warmup={self.warmup_rounds})")
+            self.previous_global_params = { name: p.clone() for name, p in aggregated_params.items() }
+            self._last_telemetry = {
+                "is_dynamic": float(1.0 if self.is_dynamic else 0.0),
+                "temperature": float(self.temperature),
+                "velocity_l2": self._velocity_l2_norm(),
+                "dist_mean_raw": float('nan'),
+                "dist_std_raw": float('nan'),
+                "dist_max_raw": float('nan'),
+                "weight_entropy": float(-np.sum(warm * (np.log(warm + 1e-12))))
+            }
+            return aggregated_params
+
+        # Calculate diversity weights for divergence layers
+        distances = self._calc_distances(params_list)
+        raw_dist_mean = float(distances.mean()) if len(distances) > 0 else 0.0
+        raw_dist_std = float(distances.std()) if len(distances) > 1 else 0.0
+        raw_dist_max = float(distances.max()) if len(distances) > 0 else 0.0
+        
+        if self.normalize_distances and len(distances) > 1:
+            mean_val = float(distances.mean())
+            std_val = float(distances.std())
+            if std_val < self.epsilon:
+                std_val = 1.0
+            distances = (distances - mean_val) / std_val
+            logger.debug(f"[FedDive-LW] Normalized distances: {distances}")
+
+        scaled = distances / float(max(self.temperature, self.epsilon))
+        scaled = scaled - np.max(scaled)
+        exp_vals = np.exp(scaled)
+        diversity_weights = exp_vals / np.sum(exp_vals)
+        logger.debug(f"[FedDive-LW] Divergence layer weights: {diversity_weights}")
+
+        # Calculate sample-based weights for backbone layers
+        sample_counts = np.array([w for _, w in client_updates], dtype=float)
+        if sample_counts.sum() > 0:
+            frac = sample_counts / sample_counts.sum()
+            if self.backbone_blend == 'sqrt':
+                backbone_weights = np.sqrt(frac); backbone_weights /= backbone_weights.sum()
+            elif self.backbone_blend == 'linear':
+                backbone_weights = frac
+            else:  # 'none' => pure uniform FedAvg-like (but should use sample frac for fairness)
+                backbone_weights = frac
+        else:
+            backbone_weights = np.ones(num_clients, dtype=float) / num_clients
+        logger.debug(f"[FedDive-LW] Backbone layer weights: {backbone_weights}")
+
+        # Layer-specific weighted aggregation
+        aggregated_params = { name: torch.zeros_like(tensor) for name, tensor in params_list[0].items() }
+        for idx, (client_params, _) in enumerate(client_updates):
+            for name, tensor in client_params.items():
+                if name in self.divergence_layers:
+                    w = float(diversity_weights[idx])
+                else:
+                    w = float(backbone_weights[idx])
+                
+                if name not in aggregated_params:
+                    aggregated_params[name] = torch.zeros_like(tensor)
+                aggregated_params[name] += w * tensor
+
+        # Update previous global parameters for next round
+        self.previous_global_params = { name: p.clone() for name, p in aggregated_params.items() }
+
+        # Telemetry
+        weight_entropy = float(-np.sum(diversity_weights * (np.log(diversity_weights + 1e-12))))
+        self._last_telemetry = {
+            "is_dynamic": float(1.0 if self.is_dynamic else 0.0),
+            "temperature": float(self.temperature),
+            "velocity_l2": self._velocity_l2_norm(),
+            "dist_mean_raw": raw_dist_mean,
+            "dist_std_raw": raw_dist_std,
+            "dist_max_raw": raw_dist_max,
+            "weight_entropy": weight_entropy
+        }
+
+        logger.info("[FedDive-LW] Aggregation complete.")
+        return aggregated_params

@@ -42,18 +42,6 @@ def run_experiment(experiment_name: str, config_path: str = None):
     elif experiment_name == "adversarial_test":
         from experiments.adversarial_test import run_experiment
         run_experiment(config_path)
-    elif experiment_name == "dynamic_temperature_study":
-        from experiments.dynamic_temperature_study import run_experiment
-        run_experiment(config_path)
-    elif experiment_name == "cifar10_benchmark":
-        from experiments.cifar10_benchmark import run_experiment
-        run_experiment(config_path)
-    elif experiment_name == "hyperparam_sensitivity":
-        from experiments.hyperparam_sensitivity import run_experiment
-        run_experiment(config_path)
-    elif experiment_name == "stability_analysis":
-        from experiments.stability_analysis import run_experiment
-        run_experiment(config_path)
     else:
         raise ValueError(f"Unknown experiment: {experiment_name}")
 
